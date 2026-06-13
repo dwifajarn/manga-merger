@@ -1,8 +1,5 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
 import re
-import base64
 
 # Konfigurasi Tampilan Halaman Utama UI
 st.set_page_config(
@@ -12,44 +9,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS untuk menyatukan gambar rapat ke bawah (Webtoon Mode)
 st.markdown("""
     <style>
     .main { background-color: #0f111a; }
     h1 { color: #ff4b4b; text-align: center; font-family: 'Helvetica Neue', sans-serif; }
-    .stButton>button { width: 100%; background-color: #ff4b4b; color: white; border-radius: 8px; font-weight: bold; }
-    .stButton>button:hover { background-color: #ff3333; color: white; }
-    img { margin-bottom: -6px !important; display: block; margin-left: auto; margin-right: auto; width: 100%; }
-    div[data-testid="stImage"] { margin-bottom: -20px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📚 WestManga Chapter Merger")
-st.markdown("<p style='text-align: center; color: #888;'>Sistem Pencarian Gambar Agresif & Bypass Hotlink Aktif.</p>", unsafe_allow_html=True)
+st.title("📚 WestManga Local Browser Merger")
+st.markdown("<p style='text-align: center; color: #888;'>Sistem Menggunakan Sesi Browser Anda Sendiri (100% Bebas Blokir Cloudflare).</p>", unsafe_allow_html=True)
 st.divider()
 
 # Input Link/URL dari halaman baca komik
-url_input = st.text_input(
+url_input = st.st.text_input(
     "🔗 Tempel URL Baca Chapter di Sini:", 
     placeholder="Contoh: https://westmanga.cc"
 )
-
-# Fungsi untuk mendownload gambar lewat backend agar lolos dari Hotlink Protection
-def get_proxied_image_base64(image_url, referer_url):
-    proxy_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Referer': referer_url,
-        'Connection': 'keep-alive'
-    }
-    try:
-        img_response = requests.get(image_url, headers=proxy_headers, timeout=10)
-        if img_response.status_code == 200:
-            encoded_string = base64.b64encode(img_response.content).decode("utf-8")
-            return f"data:image/jpeg;base64,{encoded_string}"
-    except:
-        pass
-    return None
 
 if url_input:
     # Membedah struktur penomoran URL komik
@@ -63,9 +38,8 @@ if url_input:
         current_ch_num = int(current_ch_str)
         padding_length = len(current_ch_str) 
         
-        st.success(f"✅ Komik Terdeteksi! Bersiap memproses Chapter {current_ch_num}.")
+        st.success(f"✅ Komik Terdeteksi! Silakan tentukan rentang chapter di bawah.")
         
-        st.write("### 🎛️ Pilih Rentang Chapter yang Ingin Digabungkan")
         col1, col2 = st.columns(2)
         with col1:
             start_ch = st.number_input("Mulai Dari Chapter:", min_value=1, value=current_ch_num, step=1)
@@ -75,83 +49,99 @@ if url_input:
         if start_ch > end_ch:
             st.warning("⚠️ Peringatan: Chapter 'Mulai' tidak boleh lebih besar dari Chapter 'Sampai'.")
         else:
-            if st.button("🚀 GABUNGKAN & BYPASS", type="primary"):
-                st.divider()
-                st.info(f"📖 Sedang memproses gambar dari Chapter {start_ch} hingga {end_ch}...")
+            # Membuat daftar URL target yang akan digabung
+            urls_to_load = []
+            for ch_num in range(int(start_ch), int(end_ch) + 1):
+                ch_str_formatted = str(ch_num).zfill(padding_length)
+                urls_to_load.append({
+                    "num": ch_num,
+                    "url": f"{base_url_left}{ch_str_formatted}{base_url_right}"
+                })
+            
+            # --- INJEKSI JAVASCRIPT SANDBOX ---
+            # Menggunakan Iframe dan JavaScript Fetch agar browser pengguna yang menembus Cloudflare
+            html_js_injector = f"""
+            <div id="status-log" style="color: #888; font-family: sans-serif; text-align: center; margin-bottom: 15px;">
+                ⏳ Memulai proses penggabungan langsung via browser Anda...
+            </div>
+            <div id="manga-container" style="background-color: #0f111a; width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
+            
+            <script>
+            const chapters = {urls_to_load};
+            const container = document.getElementById('manga-container');
+            const log = document.getElementById('status-log');
+            
+            async function loadManga() {{
+                log.innerText = "⏳ Sedang memproses "+chapters.length+" chapter. Mohon tunggu...";
                 
-                # Memalsukan identitas request agar dianggap sebagai browser manusia biasa
-                html_headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                    'Referer': 'https://westmanga.cc',
-                    'Cache-Control': 'max-age=0'
-                }
-                
-                for ch_num in range(start_ch, end_ch + 1):
-                    ch_str_formatted = str(ch_num).zfill(padding_length)
-                    target_url = f"{base_url_left}{ch_str_formatted}{base_url_right}"
+                for (let ch of chapters) {{
+                    // Membuat judul pembatas per chapter
+                    let header = document.createElement('h3');
+                    header.innerText = "📌 CHAPTER " + ch.num;
+                    header.style.color = "#ff4b4b";
+                    header.style.backgroundColor = "#1e2235";
+                    header.style.padding = "10px";
+                    header.style.borderRadius = "5px";
+                    header.style.textAlign = "center";
+                    header.style.width = "90%";
+                    header.style.fontFamily = "sans-serif";
+                    header.style.marginTop = "20px";
+                    container.appendChild(header);
                     
-                    st.markdown(f"<h3 style='text-align: center; color: #ff4b4b; background-color: #1e2235; padding: 10px; border-radius: 5px; margin-top: 20px;'>📌 CHAPTER {ch_num}</h3>", unsafe_allow_html=True)
-                    
-                    try:
-                        # Menggunakan Session agar cookies penyamaran tetap tersimpan
-                        session = requests.Session()
-                        response = session.get(target_url, headers=html_headers, timeout=15)
+                    try {{
+                        // Memanggil halaman lewat proksi CORS AllOrigins agar browser diizinkan membaca HTML situs lain
+                        let response = await fetch(`https://allorigins.win{{encodeURIComponent(ch.url)}}`);
+                        if (!response.ok) throw new Error("Gagal memuat");
                         
-                        if response.status_code == 404:
-                            st.warning(f"📭 Chapter {ch_num} tidak ditemukan. Proses dihentikan.")
-                            break
-                        elif response.status_code == 403:
-                            st.error(f"❌ Server memblokir akses (Error 403) pada Chapter {ch_num}.")
-                            break
-                        elif response.status_code == 200:
-                            soup = BeautifulSoup(response.text, 'html.parser')
-                            
-                            # --- STRATEGI BARU: PENCARIAN GAMBAR AGRESIF GLOBAL ---
-                            # Mengumpulkan seluruh tag <img> tanpa memedulikan nama kontainer/class
-                            all_images = soup.find_all('img')
-                            
-                            valid_urls = []
-                            for img in all_images:
-                                # Ambil url dari berbagai macam kemungkinan atribut lazy-load
-                                url_candidates = [
-                                    img.get('src'), 
-                                    img.get('data-src'), 
-                                    img.get('data-lazy-src'), 
-                                    img.get('content')
-                                ]
+                        let data = await response.json();
+                        let parser = new DOMParser();
+                        let doc = parser.parseFromString(data.contents, 'text/html');
+                        
+                        // Mencari semua gambar di dokumen hasil fetch
+                        let images = doc.querySelectorAll('img');
+                        let count = 0;
+                        
+                        images.forEach(img => {{
+                            let src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+                            if (src && src.includes('westmanga')) {{
+                                if (src.startsWith('//')) src = "https:" + src;
                                 
-                                for candidate in url_candidates:
-                                    if candidate:
-                                        candidate = candidate.strip()
-                                        # Menyaring hanya URL yang mengarah ke CDN penyimpanan gambar komik WestManga
-                                        if 'westmanga' in candidate and ('/west/' in candidate or '.jpg' in candidate or '.png' in candidate):
-                                            if ' ' in candidate:
-                                                candidate = candidate.split(' ')[0]
-                                            if candidate.startswith('//'):
-                                                candidate = "https:" + candidate
-                                            
-                                            if candidate not in valid_urls:
-                                                valid_urls.append(candidate)
-                                            break
-                            
-                            img_count = 0
-                            if valid_urls:
-                                for img_url in valid_urls:
-                                    # Mengunduh data biner lewat proksi server
-                                    proxied_img_data = get_proxied_image_base64(img_url, target_url)
-                                    
-                                    if proxied_img_data:
-                                        st.image(proxied_img_data, use_column_width=True)
-                                        img_count += 1
-                                
-                                if img_count == 0:
-                                    st.caption(f"⚠️ Gambar di Chapter {ch_num} ditemukan, namun proksi gagal mengunduhnya.")
-                            else:
-                                st.warning(f"❌ Struktur HTML tag gambar tidak ditemukan pada halaman Chapter {ch_num}.")
-                    except Exception as e:
-                        st.error(f"❌ Gangguan teknis pada Chapter {ch_num}: {e}")
-                        break
+                                let newImg = document.createElement('img');
+                                newImg.src = src;
+                                newImg.style.width = "100%";
+                                newImg.style.display = "block";
+                                newImg.style.marginBottom = "-5px"; // Menghilangkan jarak antar gambar (Webtoon mode)
+                                container.appendChild(newImg);
+                                count++;
+                            }}
+                        }});
+                        
+                        if(count === 0) {{
+                            let warning = document.createElement('p');
+                            warning.innerText = "⚠️ Gagal mengekstrak gambar untuk chapter ini (Halaman terproteksi).";
+                            warning.style.color = "yellow";
+                            warning.style.fontFamily = "sans-serif";
+                            container.appendChild(warning);
+                        }}
+                        
+                    }} catch (err) {{
+                        let errorLog = document.createElement('p');
+                        errorLog.innerText = `❌ Gagal memuat Chapter ${{ch.num}}: Jaringan sibuk.`;
+                        errorLog.style.color = "red";
+                        errorLog.style.fontFamily = "sans-serif";
+                        container.appendChild(errorLog);
+                    }}
+                }}
+                log.innerText = "✅ Selesai menggabungkan! Selamat membaca.";
+            }}
+            
+            // Jalankan fungsi otomatis saat elemen selesai dimuat
+            loadManga();
+            </script>
+            """
+            
+            # Merelasikan kode HTML/JS ke dalam UI Streamlit dengan tinggi fleksibel
+            st.components.v1.html(html_js_injector, height=2000, scrolling=True)
+            
     else:
-        st.error("❌ Format URL tidak dikenali. Pastikan menyalin tautan halaman baca bab aktif.")
+        st.error("❌ Format URL salah. Pastikan menyalin tautan halaman baca bab aktif.")
