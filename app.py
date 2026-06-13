@@ -20,8 +20,8 @@ st.title("📚 WestManga Local Browser Merger")
 st.markdown("<p style='text-align: center; color: #888;'>Sistem Menggunakan Sesi Browser Anda Sendiri (100% Bebas Blokir Cloudflare).</p>", unsafe_allow_html=True)
 st.divider()
 
-# Input Link/URL dari halaman baca komik
-url_input = st.st.text_input(
+# --- PERBAIKAN DI BARIS INI (st.text_input yang benar) ---
+url_input = st.text_input(
     "🔗 Tempel URL Baca Chapter di Sini:", 
     placeholder="Contoh: https://westmanga.cc"
 )
@@ -59,7 +59,6 @@ if url_input:
                 })
             
             # --- INJEKSI JAVASCRIPT SANDBOX ---
-            # Menggunakan Iframe dan JavaScript Fetch agar browser pengguna yang menembus Cloudflare
             html_js_injector = f"""
             <div id="status-log" style="color: #888; font-family: sans-serif; text-align: center; margin-bottom: 15px;">
                 ⏳ Memulai proses penggabungan langsung via browser Anda...
@@ -75,7 +74,6 @@ if url_input:
                 log.innerText = "⏳ Sedang memproses "+chapters.length+" chapter. Mohon tunggu...";
                 
                 for (let ch of chapters) {{
-                    // Membuat judul pembatas per chapter
                     let header = document.createElement('h3');
                     header.innerText = "📌 CHAPTER " + ch.num;
                     header.style.color = "#ff4b4b";
@@ -89,7 +87,6 @@ if url_input:
                     container.appendChild(header);
                     
                     try {{
-                        // Memanggil halaman lewat proksi CORS AllOrigins agar browser diizinkan membaca HTML situs lain
                         let response = await fetch(`https://allorigins.win{{encodeURIComponent(ch.url)}}`);
                         if (!response.ok) throw new Error("Gagal memuat");
                         
@@ -97,7 +94,6 @@ if url_input:
                         let parser = new DOMParser();
                         let doc = parser.parseFromString(data.contents, 'text/html');
                         
-                        // Mencari semua gambar di dokumen hasil fetch
                         let images = doc.querySelectorAll('img');
                         let count = 0;
                         
@@ -110,7 +106,7 @@ if url_input:
                                 newImg.src = src;
                                 newImg.style.width = "100%";
                                 newImg.style.display = "block";
-                                newImg.style.marginBottom = "-5px"; // Menghilangkan jarak antar gambar (Webtoon mode)
+                                newImg.style.marginBottom = "-5px";
                                 container.appendChild(newImg);
                                 count++;
                             }}
@@ -135,12 +131,10 @@ if url_input:
                 log.innerText = "✅ Selesai menggabungkan! Selamat membaca.";
             }}
             
-            // Jalankan fungsi otomatis saat elemen selesai dimuat
             loadManga();
             </script>
             """
             
-            # Merelasikan kode HTML/JS ke dalam UI Streamlit dengan tinggi fleksibel
             st.components.v1.html(html_js_injector, height=2000, scrolling=True)
             
     else:
