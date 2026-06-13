@@ -11,122 +11,113 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS untuk mempercantik UI (Warna latar belakang dan tampilan gambar)
+# Custom CSS untuk mempercantik UI
 st.markdown("""
     <style>
     .main { background-color: #0f111a; }
     h1 { color: #ff4b4b; text-align: center; font-family: 'Helvetica Neue', sans-serif; }
-    .stButton>button { width: 100%; background-color: #ff4b4b; color: white; border-radius: 8px; }
+    .stButton>button { width: 100%; background-color: #ff4b4b; color: white; border-radius: 8px; font-weight: bold; }
     .stButton>button:hover { background-color: #ff3333; color: white; }
     img { margin-bottom: -5px !important; display: block; margin-left: auto; margin-right: auto; }
     </style>
     """, unsafe_allow_html=True)
 
-# Header UI
-st.title("📚 Manga & Manhwa Chapter Merger")
-st.markdown("<p style='text-align: center; color: #888; '>Gabungkan banyak chapter menjadi 1 halaman vertikal panjang tanpa gangguan iklan.</p>", unsafe_allow_html=True)
+st.title("📚 WestManga Chapter Merger")
+st.markdown("<p style='text-align: center; color: #888;'>Tempelkan link chapter aktif, lalu pilih rentang chapter berikutnya secara otomatis.</p>", unsafe_allow_html=True)
 st.divider()
 
-# Input Link/URL
+# Input Link/URL dari halaman baca komik
 url_input = st.text_input(
-    "🔗 Tempel URL Utama Komik di Sini:", 
-    placeholder="Contoh: https://westmanga.id"
+    "🔗 Tempel URL Baca Chapter di Sini:", 
+    placeholder="Contoh: https://westmanga.cc/view/yasagure-shoukansha-wa-ugokanai-chapter-01-bahasa-indonesia"
 )
 
-# Proses crawling data setelah user memasukkan URL
 if url_input:
-    # Set header agar tidak langsung diblokir sebagai bot biasa
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-    }
+    # Menggunakan regex untuk membedah struktur URL komik WestManga (.cc atau domain lainnya)
+    # Pola mendeteksi bagian angka chapter (misal: 'chapter-01' atau 'chapter-1')
+    match = re.search(r'(.*-chapter-)(\d+)(.*)', url_input)
     
-    with st.spinner("⏳ Sedang memindai daftar chapter dari website..."):
-        try:
-            response = requests.get(url_input, headers=headers, timeout=15)
+    if match:
+        base_url_left = match.group(1)   # Menyimpan: https://westmanga.cc
+        current_ch_str = match.group(2) # Menyimpan: 01 atau 1
+        base_url_right = match.group(3)  # Menyimpan: -bahasa-indonesia
+        
+        current_ch_num = int(current_ch_str)
+        padding_length = len(current_ch_str) # Menjaga format angka (apakah pakai '01' atau '1')
+        
+        st.success(f"✅ Sistem berhasil mendeteksi komik! Anda sedang membuka Chapter {current_ch_num}.")
+        
+        st.write("### 🎛️ Pilih Rentang Chapter yang Ingin Digabungkan")
+        col1, col2 = st.columns(2)
+        with col1:
+            # Otomatis mengunci batas awal dari chapter yang sedang dibuka
+            start_ch = st.number_input("Mulai Dari Chapter:", min_value=1, value=current_ch_num, step=1)
+        with col2:
+            # Memberikan rekomendasi default untuk menggabungkan hingga 5 chapter ke depan
+            end_ch = st.number_input("Sampai Dengan Chapter:", min_value=1, value=current_ch_num + 4, step=1)
             
-            if response.status_code == 403:
-                st.error("❌ Akses Ditolak (Error 403). Website target dilindungi oleh Cloudflare Anti-Bot. Silakan coba link dari situs komik lain.")
-            elif response.status_code != 200:
-                st.error(f"❌ Gagal memuat situs. Kode Error: {response.status_code}")
-            else:
-                soup = BeautifulSoup(response.text, 'html.parser')
+        if start_ch > end_ch:
+            st.warning("⚠️ Peringatan: Chapter 'Mulai' tidak boleh lebih besar dari Chapter 'Sampai'.")
+        else:
+            if st.button("🚀 GABUNGKAN & BACA SEKARANG", type="primary"):
+                st.divider()
+                st.info(f"📖 Memproses penggabungan dari Chapter {start_ch} hingga {end_ch}...")
                 
-                # Mendeteksi link chapter (Mendukung tema Madara, Mangastream, dll)
-                chapter_elements = soup.find_all('a', href=re.compile(r'/chapter-|/ch-'))
-                if not chapter_elements:
-                    chapter_elements = soup.find_all('li', class_='wp-manga-chapter')
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                    'Referer': 'https://westmanga.cc/'
+                }
                 
-                chapters = []
-                for el in chapter_elements:
-                    href = el.get('href') if el.name == 'a' else el.find('a').get('href')
-                    text = el.text.strip()
-                    if href and href not in [c['href'] for c in chapters]:
-                        # Bersihkan teks chapter agar rapi di UI dropdown
-                        clean_text = re.sub(r'\s+', ' ', text)
-                        chapters.append({'text': clean_text, 'href': href})
-                
-                # Urutkan dari chapter terlama ke terbaru
-                chapters.reverse()
-                
-                if chapters:
-                    st.success(f"✅ Berhasil menemukan {len(chapters)} buah chapter!")
+                # Melakukan loop untuk menembak URL chapter berdasarkan rentang angka yang dipilih
+                for ch_num in range(start_ch, end_ch + 1):
+                    # Format kembali angka bab agar sesuai struktur URL asli (misal: '1' jadi '01')
+                    ch_str_formatted = str(ch_num).zfill(padding_length)
+                    target_url = f"{base_url_left}{ch_str_formatted}{base_url_right}"
                     
-                    # Form Pilihan Rentang Chapter (UI Kiri dan Kanan)
-                    chapter_labels = [c['text'] for c in chapters]
+                    st.markdown(f"<h3 style='text-align: center; color: #ff4b4b; background-color: #1e2235; padding: 10px; border-radius: 5px; margin-top: 20px;'>📌 CHAPTER {ch_num}</h3>", unsafe_allow_html=True)
                     
-                    st.write("### 🎛️ Pilih Rentang Chapter")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        start_ch = st.selectbox("Mulai Dari:", chapter_labels, index=0)
-                    with col2:
-                        end_ch = st.selectbox("Sampai Dengan:", chapter_labels, index=min(4, len(chapter_labels)-1))
+                    try:
+                        response = requests.get(target_url, headers=headers, timeout=15)
                         
-                    idx_start = chapter_labels.index(start_ch)
-                    idx_end = chapter_labels.index(end_ch)
-                    
-                    if idx_start > idx_end:
-                        st.warning("⚠️ Peringatan: Chapter 'Mulai' harus lebih kecil atau sama dengan Chapter 'Sampai'.")
-                    else:
-                        # Tombol Eksekusi Penggabungan
-                        if st.button("🚀 GABUNGKAN & BACA SEKARANG", type="primary"):
-                            selected_chapters = chapters[idx_start:idx_end+1]
+                        if response.status_code == 404:
+                            st.warning(f"📭 Chapter {ch_num} tidak ditemukan atau belum rilis (Status 404). Proses dihentikan.")
+                            break
+                        elif response.status_code == 403:
+                            st.error(f"❌ Akses diblokir Cloudflare pada Chapter {ch_num}. Coba aktifkan VPN atau deploy ulang aplikasi Anda.")
+                            break
+                        elif response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
                             
-                            st.divider()
-                            st.info(f"📖 Menampilkan rentang: {start_ch} hingga {end_ch}")
+                            # Mencari kontainer gambar utama WestManga
+                            reader_area = soup.find(id='readerarea') or soup.find(class_='readerarea')
                             
-                            # Proses mengambil gambar dari rentang chapter yang dipilih
-                            for ch in selected_chapters:
-                                st.markdown(f"<h3 style='text-align: center; color: #ff4b4b; background-color: #1e2235; padding: 10px; border-radius: 5px;'>📌 {ch['text']}</h3>", unsafe_allow_html=True)
+                            if reader_area:
+                                images = reader_area.find_all('img')
+                                img_count = 0
                                 
-                                ch_res = requests.get(ch['href'], headers=headers, timeout=15)
-                                ch_soup = BeautifulSoup(ch_res.text, 'html.parser')
-                                
-                                # Mencari area pembaca gambar utama
-                                reader_area = ch_soup.find(id='readerarea') or ch_soup.find(class_='readerarea') or ch_soup.find(id='content')
-                                
-                                if reader_area:
-                                    images = reader_area.find_all('img')
-                                    valid_img_count = 0
-                                    
-                                    for img in images:
-                                        # bypass lazy-loading atribut gambar website komik
-                                        img_url = img.get('src') or img.get('data-src') or img.get('data-lazy-src') or img.get('data-srcset')
-                                        if img_url:
-                                            img_url = img_url.strip().split(' ')[0] # ambil URL murninya
-                                            if not img_url.startswith('http'):
-                                                img_url = "https:" + img_url if img_url.startswith('//') else url_input + img_url
+                                for img in images:
+                                    img_url = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+                                    if img_url:
+                                        img_url = img_url.strip()
+                                        
+                                        # Bersihkan spasi atau pecahan string url kotor
+                                        if ' ' in img_url:
+                                            img_url = img_url.split(' ')[0]
                                             
-                                            # Tampilkan gambar tanpa space jarak di UI webtoon mode
-                                            st.image(img_url, use_column_width=True)
-                                            valid_img_count += 1
+                                        if img_url.startswith('//'):
+                                            img_url = "https:" + img_url
                                             
-                                    if valid_img_count == 0:
-                                        st.caption("⚠️ Gambar gagal dimuat secara otomatis dari chapter ini.")
-                                else:
-                                    st.warning(f"❌ Gagal memetakan struktur gambar pada {ch['text']}.")
-                else:
-                    st.error("❌ Tidak dapat mendeteksi daftar chapter di link ini. Pastikan link mengarah ke halaman utama informasi manga.")
-        except Exception as e:
-            st.error(f"❌ Terjadi gangguan jaringan atau kegagalan sistem: {e}")
+                                        # Tampilkan gambar secara vertikal rapat (Webtoon Style)
+                                        st.image(img_url, use_column_width=True)
+                                        img_count += 1
+                                
+                                if img_count == 0:
+                                    st.caption(f"⚠️ Gagal mengekstrak gambar di Chapter {ch_num}. Struktur tema web kemungkinan berubah.")
+                            else:
+                                st.warning(f"❌ Elemen baca gambar tidak ditemukan pada struktur halaman Chapter {ch_num}.")
+                    except Exception as e:
+                        st.error(f"❌ Gangguan koneksi saat memuat Chapter {ch_num}: {e}")
+                        break
+    else:
+        st.error("❌ Format URL salah! Pastikan Anda menyalin link halaman baca bab, bukan link profil komik. Format harus mengandung kata '-chapter-XX-'.")
