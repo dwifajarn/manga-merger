@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS untuk mempercantik UI dan menyatukan gambar rapat ke bawah
+# Custom CSS untuk menyatukan gambar rapat ke bawah (Webtoon Mode)
 st.markdown("""
     <style>
     .main { background-color: #0f111a; }
@@ -25,7 +25,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("📚 WestManga Chapter Merger")
-st.markdown("<p style='text-align: center; color: #888;'>Sistem Bypass Hotlink Aktif - Gambar Dimuat Lewat Jalur Proksi Server.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #888;'>Sistem Pencarian Gambar Agresif & Bypass Hotlink Aktif.</p>", unsafe_allow_html=True)
 st.divider()
 
 # Input Link/URL dari halaman baca komik
@@ -34,7 +34,7 @@ url_input = st.text_input(
     placeholder="Contoh: https://westmanga.cc"
 )
 
-# Fungsi untuk mengunduh gambar dan mengubahnya menjadi format Base64 agar lolos Hotlink Protection
+# Fungsi untuk mendownload gambar lewat backend agar lolos dari Hotlink Protection
 def get_proxied_image_base64(image_url, referer_url):
     proxy_headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -45,7 +45,6 @@ def get_proxied_image_base64(image_url, referer_url):
     try:
         img_response = requests.get(image_url, headers=proxy_headers, timeout=10)
         if img_response.status_code == 200:
-            # Mengubah biner gambar menjadi string teks Base64 aman
             encoded_string = base64.b64encode(img_response.content).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded_string}"
     except:
@@ -53,6 +52,7 @@ def get_proxied_image_base64(image_url, referer_url):
     return None
 
 if url_input:
+    # Membedah struktur penomoran URL komik
     match = re.search(r'(.*-chapter-)(\d+)(.*)', url_input)
     
     if match:
@@ -70,19 +70,22 @@ if url_input:
         with col1:
             start_ch = st.number_input("Mulai Dari Chapter:", min_value=1, value=current_ch_num, step=1)
         with col2:
-            end_ch = st.number_input("Sampai Dengan Chapter:", min_value=1, value=current_ch_num + 2, step=1) # Default 3 chapter agar loading stabil
+            end_ch = st.number_input("Sampai Dengan Chapter:", min_value=1, value=current_ch_num + 2, step=1)
             
         if start_ch > end_ch:
             st.warning("⚠️ Peringatan: Chapter 'Mulai' tidak boleh lebih besar dari Chapter 'Sampai'.")
         else:
-            if st.button("🚀 GABUNGKAN & BYPASS HOTLINK", type="primary"):
+            if st.button("🚀 GABUNGKAN & BYPASS", type="primary"):
                 st.divider()
-                st.info(f"📖 Sedang menjahit gambar dari Chapter {start_ch} hingga {end_ch}...")
+                st.info(f"📖 Sedang memproses gambar dari Chapter {start_ch} hingga {end_ch}...")
                 
+                # Memalsukan identitas request agar dianggap sebagai browser manusia biasa
                 html_headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-                    'Referer': 'https://westmanga.cc'
+                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Referer': 'https://westmanga.cc',
+                    'Cache-Control': 'max-age=0'
                 }
                 
                 for ch_num in range(start_ch, end_ch + 1):
@@ -92,47 +95,59 @@ if url_input:
                     st.markdown(f"<h3 style='text-align: center; color: #ff4b4b; background-color: #1e2235; padding: 10px; border-radius: 5px; margin-top: 20px;'>📌 CHAPTER {ch_num}</h3>", unsafe_allow_html=True)
                     
                     try:
-                        response = requests.get(target_url, headers=html_headers, timeout=15)
+                        # Menggunakan Session agar cookies penyamaran tetap tersimpan
+                        session = requests.Session()
+                        response = session.get(target_url, headers=html_headers, timeout=15)
                         
                         if response.status_code == 404:
                             st.warning(f"📭 Chapter {ch_num} tidak ditemukan. Proses dihentikan.")
                             break
                         elif response.status_code == 403:
-                            st.error(f"❌ Server memblokir akses ke halaman web Chapter {ch_num}.")
+                            st.error(f"❌ Server memblokir akses (Error 403) pada Chapter {ch_num}.")
                             break
                         elif response.status_code == 200:
                             soup = BeautifulSoup(response.text, 'html.parser')
                             
-                            # Menggunakan pencarian berbasis pola flex-col untuk struktur web baru WestManga
-                            reader_area = soup.find('div', class_=lambda x: x and 'flex-col' in x and 'items-center' in x)
+                            # --- STRATEGI BARU: PENCARIAN GAMBAR AGRESIF GLOBAL ---
+                            # Mengumpulkan seluruh tag <img> tanpa memedulikan nama kontainer/class
+                            all_images = soup.find_all('img')
                             
-                            if not reader_area:
-                                # Skema cadangan jika kontainer fleksibel gagal ditangkap
-                                img_containers = soup.find_all('div', class_=lambda x: x and 'relative' in x and 'justify-center' in x)
-                                images = [container.find('img') for container in img_containers if container.find('img')]
-                            else:
-                                images = reader_area.find_all('img')
+                            valid_urls = []
+                            for img in all_images:
+                                # Ambil url dari berbagai macam kemungkinan atribut lazy-load
+                                url_candidates = [
+                                    img.get('src'), 
+                                    img.get('data-src'), 
+                                    img.get('data-lazy-src'), 
+                                    img.get('content')
+                                ]
+                                
+                                for candidate in url_candidates:
+                                    if candidate:
+                                        candidate = candidate.strip()
+                                        # Menyaring hanya URL yang mengarah ke CDN penyimpanan gambar komik WestManga
+                                        if 'westmanga' in candidate and ('/west/' in candidate or '.jpg' in candidate or '.png' in candidate):
+                                            if ' ' in candidate:
+                                                candidate = candidate.split(' ')[0]
+                                            if candidate.startswith('//'):
+                                                candidate = "https:" + candidate
+                                            
+                                            if candidate not in valid_urls:
+                                                valid_urls.append(candidate)
+                                            break
                             
                             img_count = 0
-                            if images:
-                                for img in images:
-                                    img_url = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
-                                    if img_url:
-                                        img_url = img_url.strip()
-                                        if ' ' in img_url:
-                                            img_url = img_url.split(' ')[0]
-                                        if img_url.startswith('//'):
-                                            img_url = "https:" + img_url
-                                            
-                                        # PROSES BYPASS: Ambil stream data gambar asli lewat Proksi internal backend
-                                        proxied_img_data = get_proxied_image_base64(img_url, target_url)
-                                        
-                                        if proxied_img_data:
-                                            st.image(proxied_img_data, use_column_width=True)
-                                            img_count += 1
+                            if valid_urls:
+                                for img_url in valid_urls:
+                                    # Mengunduh data biner lewat proksi server
+                                    proxied_img_data = get_proxied_image_base64(img_url, target_url)
+                                    
+                                    if proxied_img_data:
+                                        st.image(proxied_img_data, use_column_width=True)
+                                        img_count += 1
                                 
                                 if img_count == 0:
-                                    st.caption(f"⚠️ Gambar di Chapter {ch_num} terdeteksi namun proksi gagal mengunduhnya.")
+                                    st.caption(f"⚠️ Gambar di Chapter {ch_num} ditemukan, namun proksi gagal mengunduhnya.")
                             else:
                                 st.warning(f"❌ Struktur HTML tag gambar tidak ditemukan pada halaman Chapter {ch_num}.")
                     except Exception as e:
